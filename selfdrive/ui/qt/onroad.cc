@@ -1,10 +1,10 @@
 #include "selfdrive/ui/qt/onroad.h"
 
 #include <cmath>
+#include <unistd.h>
 
 #include <QDebug>
 #include <QMouseEvent>
-#include <QFileInfo>
 #include <QDateTime>
 #include <QProcess>
 #include <QTimer>
@@ -65,15 +65,13 @@ void OnroadWindow::updateState(const UIState &s) {
   Alert alert = Alert::get(*(s.sm), s.scene.started_frame);
   if (!s.is_OpenpilotViewEnabled) {
     // opkr
-    if (QFileInfo::exists("/data/log/error.txt") && s.scene.show_error) {
-      QFileInfo fileInfo;
-      fileInfo.setFile("/data/log/error.txt");
-      QDateTime modifiedtime = fileInfo.lastModified();
-      QString modified_time = modifiedtime.toString("yyyy-MM-dd hh:mm:ss ");
-      const std::string txt = util::read_file("/data/log/error.txt");
-      if (RichTextDialog::alert(modified_time + QString::fromStdString(txt), this)) {
-        QProcess::execute("rm -f /data/log/error.txt");
-        QTimer::singleShot(500, []() {});
+    if (s.scene.show_error) {
+      if(access("/data/log/error.txt", F_OK ) != -1) {
+        const std::string txt = util::read_file("/data/log/error.txt");
+        if (RichTextDialog::alert(QString::fromStdString(txt), this)) {
+          QProcess::execute("rm -f /data/log/error.txt");
+          QTimer::singleShot(500, []() {});
+        }
       }
     }
     alerts->updateAlert(alert);
@@ -359,6 +357,8 @@ void AnnotatedCameraWidget::updateState(const UIState &s) {
   const bool nav_alive = sm.alive("navInstruction") && sm["navInstruction"].getValid();
 
   const auto cs = sm["controlsState"].getControlsState();
+  const auto car_state = sm["carState"].getCarState();
+  const auto nav_instruction = sm["navInstruction"].getNavInstruction();
 
   // Handle older routes where vCruiseCluster is not set
   float v_cruise =  cs.getVCruiseCluster() == 0.0 ? cs.getVCruise() : cs.getVCruiseCluster();
@@ -370,18 +370,18 @@ void AnnotatedCameraWidget::updateState(const UIState &s) {
 
   // Handle older routes where vEgoCluster is not set
   float v_ego;
-  if (sm["carState"].getCarState().getVEgoCluster() == 0.0 && !v_ego_cluster_seen) {
-    v_ego = sm["carState"].getCarState().getVEgo();
+  if (car_state.getVEgoCluster() == 0.0 && !v_ego_cluster_seen) {
+    v_ego = car_state.getVEgo();
   } else {
-    //v_ego = sm["carState"].getCarState().getVEgoCluster();
+    //v_ego = car_state.getVEgoCluster();
     //v_ego_cluster_seen = true;
-    v_ego = sm["carState"].getCarState().getVEgo();
+    v_ego = car_state.getVEgo();
   }
   float cur_speed = cs_alive ? std::max<float>(0.0, v_ego) : 0.0;
   cur_speed *= s.scene.is_metric ? MS_TO_KPH : MS_TO_MPH;
 
-  auto speed_limit_sign = sm["navInstruction"].getNavInstruction().getSpeedLimitSign();
-  float speed_limit = nav_alive ? sm["navInstruction"].getNavInstruction().getSpeedLimit() : 0.0;
+  auto speed_limit_sign = nav_instruction.getSpeedLimitSign();
+  float speed_limit = nav_alive ? nav_instruction.getSpeedLimit() : 0.0;
   speed_limit *= (s.scene.is_metric ? MS_TO_KPH : MS_TO_MPH);
 
   setProperty("speedLimit", speed_limit);
@@ -468,7 +468,11 @@ void AnnotatedCameraWidget::drawHud(QPainter &p) {
   int bottom_radius = 32;
 
   QRect set_speed_rect(QPoint(15 + (default_size.width() - set_speed_size.width()) / 2, s->scene.low_ui_profile?(height()-default_size.height()-35-150):15), set_speed_size);
-  p.setPen(QPen(whiteColor(75), 6));
+  if (s->scene.exp_mode_temp) {
+    p.setPen(QPen(whiteColor(75), 6));
+  } else {
+    p.setPen(QPen(greenColor(220), 6));
+  }
   if (is_over_sl) {
     p.setBrush(ochreColor(128));
   } else if (!is_over_sl && s->scene.limitSpeedCamera > 19){
@@ -508,6 +512,11 @@ void AnnotatedCameraWidget::drawHud(QPainter &p) {
   p.setFont(InterFont(90, QFont::Bold));
   p.setPen(set_speed_color);
   p.drawText(set_speed_rect.adjusted(0, 90, 0, 0), Qt::AlignTop | Qt::AlignHCenter, s->scene.cruiseAccStatus?QString::number(s->scene.vSetDis, 'f', 0):"-");
+
+  if (s->scene.btn_pressing > 0) {
+    p.setPen(QPen(Qt::white, 15));
+    p.drawPoint(set_speed_rect.left()+22, set_speed_rect.y()+set_speed_size.height()/2+17);
+  }
 
   const QRect sign_rect = set_speed_rect.adjusted(sign_margin, default_size.height(), -sign_margin, -sign_margin);
   // US/Canada (MUTCD style) sign`
@@ -898,7 +907,7 @@ void AnnotatedCameraWidget::drawHud(QPainter &p) {
     // debug info(right panel)
     int width_r = 180;
     int sp_xr = rect().right() - UI_BORDER_SIZE - width_r / 2 - 10;
-    int sp_yr = UI_BORDER_SIZE + 235;
+    int sp_yr = UI_BORDER_SIZE + 245;
     int num_r = 0;
 
     //p.setRenderHint(QPainter::TextAntialiasing);
@@ -1093,7 +1102,11 @@ void AnnotatedCameraWidget::drawHud(QPainter &p) {
     p.setBrush(blackColor(70));
     p.setPen(Qt::NoPen);
     p.drawEllipse(m_x-15, m_y-15, m_btn_size+30, m_btn_size+30);
-    p.setPen(QPen(QColor(255, 255, 255, 80), 6));
+    if (s->scene.liveENaviData.eopkrconalive) {
+      p.setPen(QPen(QColor(0, 255, 0, 150), 6));
+    } else {
+      p.setPen(QPen(QColor(255, 255, 255, 80), 6));
+    }
     p.setBrush(Qt::NoBrush);
     if (s->scene.lateralPlan.lanelessModeStatus) p.setBrush(QColor(13, 177, 248, 100));
     p.drawEllipse(multi_btn_draw);
@@ -1255,7 +1268,7 @@ void AnnotatedCameraWidget::drawHud(QPainter &p) {
       sl_opacity = 1;
     }
 
-    if (s->scene.limitSpeedCamera > 19) {
+    if (s->scene.limitSpeedCamera > 21) {
       if (s->scene.speedlimit_signtype) {
         p.setBrush(whiteColor(255/sl_opacity));
         p.drawRoundedRect(rect_si, 8, 8);

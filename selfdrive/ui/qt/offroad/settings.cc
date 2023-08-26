@@ -56,11 +56,11 @@ TogglesPanel::TogglesPanel(SettingsWindow *parent) : ListWidget(parent) {
               "Since the driving model decides the speed to drive, the set speed will only act as an upper bound. This is an alpha quality feature; mistakes should be expected."))
       .arg(tr("Navigate on openpilot"))
       .arg(tr("When navigation has a destination, openpilot will input the map information into the model. This provides useful context for the model and allows openpilot to keep left or right appropriately at forks/exits. "
-              "Lane change behavior is unchanged and still activated by the driver. This is an alpha quality feature; mistakes should be expected, particularly around exits/forks."
-					    "These mistakes can include unintended laneline crossings, late exit taking, driving towards dividing barriers in the gore areas, etc."))
+              "Lane change behavior is unchanged and still activated by the driver. This is an alpha quality feature; mistakes should be expected, particularly around exits and forks. "
+                        "These mistakes can include unintended laneline crossings, late exit taking, driving towards dividing barriers in the gore areas, etc."))
       .arg(tr("New Driving Visualization"))
-      .arg(tr("The driving visualization will transition to the road-facing wide-angle camera at low speeds to better show some turns. The Experimental mode logo will also be shown in the top right corner."
-				      "When a navigation destination is set and the driving model is using it as input, the driving path on the map will turn green.")),
+      .arg(tr("The driving visualization will transition to the road-facing wide-angle camera at low speeds to better show some turns. The Experimental mode logo will also be shown in the top right corner. "
+              "When a navigation destination is set and the driving model is using it as input, the driving path on the map will turn green.")),
       "../assets/img_experimental_white.svg",
     },
     {
@@ -328,8 +328,8 @@ SoftwarePanel::SoftwarePanel(QWidget* parent) : ListWidget(parent) {
       desc += tr("Network connection is missing or unstable. Check the connection.");
       ConfirmationDialog::alert(desc, this);
     } else if (commit_local == commit_remote) {
-      std::system("/data/openpilot/selfdrive/assets/addon/script/gitcommit.sh &");
-      desc += tr("Local and remote match. No update required.");
+      params.put("RunCustomCommand", "1", 1);
+      desc += tr("Local and remote match, but running check, try again in few seconds to make sure.");
       ConfirmationDialog::alert(desc, this);
     } else {
       if (QFileInfo::exists("/data/OPKR_Updates.txt")) {
@@ -339,7 +339,7 @@ SoftwarePanel::SoftwarePanel(QWidget* parent) : ListWidget(parent) {
         if (UpdateInfoDialog::confirm(desc + "\n" + QString::fromStdString(txt), this)) {
           if (ConfirmationDialog::confirm2(tr("Device will be updated and rebooted. Do you want to proceed?"), this)) {
             std::system("touch /data/opkr_compiling");
-            std::system("/data/openpilot/selfdrive/assets/addon/script/gitpull.sh &");
+            params.put("RunCustomCommand", "2", 1);
           }
         }
       } else {
@@ -353,7 +353,7 @@ SoftwarePanel::SoftwarePanel(QWidget* parent) : ListWidget(parent) {
           if (UpdateInfoDialog::confirm(desc + "\n" + QString::fromStdString(txt), this)) {
             if (ConfirmationDialog::confirm2(tr("Device will be updated and rebooted. Do you want to proceed?"), this)) {
               std::system("touch /data/opkr_compiling");
-              std::system("/data/openpilot/selfdrive/assets/addon/script/gitpull.sh &");
+              params.put("RunCustomCommand", "2", 1);
             }
           }
         }

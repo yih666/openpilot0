@@ -191,6 +191,8 @@ static void update_state(UIState *s) {
     scene.gap_by_speed_on = scene.controls_state.getGapBySpeedOn();
     scene.enabled = scene.controls_state.getEnabled();
     scene.experimental_mode = scene.controls_state.getExperimentalMode();
+    scene.exp_mode_temp = scene.controls_state.getExpModeTemp();
+    scene.btn_pressing = scene.controls_state.getBtnPressing();
   }
   if (sm.updated("carState")) {
     scene.car_state = sm["carState"].getCarState();
@@ -443,10 +445,10 @@ void UIState::updateStatus() {
   if (!scene.auto_gitpull && (sm->frame - scene.started_frame > 30*UI_FREQ)) {
     if (Params().getBool("GitPullOnBoot")) {
       scene.auto_gitpull = true;
-      std::system("/data/openpilot/selfdrive/assets/addon/script/gitpull.sh &");
+      Params().put("RunCustomCommand", "2", 1);
     } else if (sm->frame - scene.started_frame > 60*UI_FREQ) {
       scene.auto_gitpull = true;
-      std::system("/data/openpilot/selfdrive/assets/addon/script/gitcommit.sh &");
+      Params().put("RunCustomCommand", "1", 1);
     }
   }
 
@@ -578,8 +580,11 @@ void Device::setAwake(bool on) {
   }
 }
 
-void Device::resetInteractiveTimeout() {
-  interactive_timeout = (ignition_on ? 10 : 30) * UI_FREQ;
+void Device::resetInteractiveTimeout(int timeout) {
+  if (timeout == -1) {
+    timeout = (ignition_on ? 10 : 30);
+  }
+  interactive_timeout = timeout * UI_FREQ;
 }
 
 void Device::updateBrightness(const UIState &s) {
